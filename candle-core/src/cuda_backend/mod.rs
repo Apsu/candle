@@ -129,6 +129,59 @@ impl Map1 for Elu {
     }
 }
 
+struct FusedNormScaleShift {
+    /// The epsilon value used during normalization.
+    epsilon: f32,
+    /// Per-hidden-element normalization weights.
+    norm_weight: CudaStorage,
+    /// Per-element modulation scale.
+    mod_scale: CudaStorage,
+    /// Per-element modulation shift.
+    mod_shift: CudaStorage,
+}
+
+impl Map1 for FusedNormScaleShift {
+    fn f<T: DeviceRepr + WithDType>(
+        &self,
+        src: &CudaSlice<T>,
+        dev: &CudaDevice,
+        layout: &Layout,
+    ) -> crate::Result<CudaSlice<T>> {
+        let shape = layout.shape();
+        let dims = shape.dims();
+        if dims.len() != 2 {
+            crate::bail!("fused_norm_scale_shift expects a 2D layout, got {:?}", dims);
+        }
+        let num_tokens = dims[0] as i32;
+        let hidden_size = dims[1] as i32;
+        let el = shape.elem_count();
+        let threads_per_block = if hidden_size < 256 { hidden_size as u32 } else { 256 };
+        let cfg = LaunchConfig {
+            grid_dim: (num_tokens as u32, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes: 0,
+        };
+        // The kernel name will be constructed as "fused_norm_scale_shift_{dtype}"
+        let func = dev.get_or_load_func(&kernel_name::<T>("fused_norm_scale_shift"), kernels::FUSED_NORM_SCALE_SHIFT)?;
+        let out = unsafe { dev.alloc::<T>(el) }?;
+        let norm = self.norm_weight.as_cuda_slice::<T>()?;
+        let scale = self.mod_scale.as_cuda_slice::<T>()?;
+        let shift = self.mod_shift.as_cuda_slice::<T>()?;
+        let params = (
+            out.as_device_ptr(),
+            src.as_device_ptr(),
+            norm.as_device_ptr(),
+            scale.as_device_ptr(),
+            shift.as_device_ptr(),
+            self.epsilon,
+            num_tokens,
+            hidden_size,
+        );
+        unsafe { func.launch(cfg, params) }?;
+        Ok(out)
+    }
+}
+
 struct Im2Col1D {
     l_k: usize,
     stride: usize,
@@ -1271,6 +1324,25 @@ impl BackendStorage for CudaStorage {
         Ok(Self { slice, device })
     }
 
+    fn fused_norm_scale_shift(
+        &self,
+        layout: &Layout,
+        norm_weight: &Self,
+        mod_scale: &Self,
+        mod_shift: &Self,
+        epsilon: f32,
+    ) -> crate::Result<Self> {
+        let device = self.device().clone();
+        let slice = FusedNormScaleShift {
+            epsilon,
+            norm_weight: norm_weight.clone(),
+            mod_scale: mod_scale.clone(),
+            mod_shift: mod_shift.clone(),
+        }
+        .map(&self.slice, &device, layout)?;
+        Ok(Self { slice, device })
+    }
+    
     fn reduce_op(&self, op: ReduceOp, layout: &Layout, sum_dims: &[usize]) -> Result<Self> {
         let device = self.device().clone();
         let slice = FastReduce(sum_dims, op).map(&self.slice, &device, layout)?;
