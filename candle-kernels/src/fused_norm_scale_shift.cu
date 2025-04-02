@@ -240,18 +240,6 @@ extern "C" __global__ void fused_norm_scale_shift_bf16_hopper(
     }
 }
 
-// Calculate appropriate shared memory size
-size_t shared_mem_size = hidden_size * sizeof(__nv_bfloat16);
-
-// Adjust block size based on hidden dimension
-int block_size = (hidden_size <= 1024) ? 256 : 512;
-
-// Choose optimal block size for Hopper (test these!)
-dim3 blockDim(block_size);
-dim3 gridDim(num_tokens);
-
-// Launch with shared memory allocation
-fused_norm_scale_shift_bf16_hopper<<<gridDim, blockDim, shared_mem_size>>>(/*...*/);
 #endif
 
 // Instantiate for f32 and f16 using the generic macro.

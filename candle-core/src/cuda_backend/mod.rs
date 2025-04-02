@@ -153,12 +153,30 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
         let num_tokens: usize = dims.iter().take(dims.len() - 1).product();
         let el = layout.shape().elem_count();
 
-        // Choose threads per block (capped at 256)
-        let threads_per_block = if hidden_size < 256 { hidden_size as u32 } else { 256 };
+        // Choose optimal block size for BF16 on Hopper (arch 9.0)
+        let threads_per_block = match T::DTYPE {
+            DType::BF16 => {
+                // For BF16 on newer architectures, use larger block sizes
+                if hidden_size <= 1024 { 256 } else { 512 }
+            }
+            _ => {
+                // For other types, use standard block size
+                if hidden_size < 256 { hidden_size as u32 } else { 256 }
+            }
+        };
+
+        // Calculate shared memory for norm weights
+        let shared_mem_size = match T::DTYPE {
+            DType::BF16 => hidden_size * std::mem::size_of::<bf16>(),
+            DType::F16 => hidden_size * std::mem::size_of::<f16>(),
+            DType::F32 => hidden_size * std::mem::size_of::<f32>(),
+            _ => 0,
+        };
+
         let cfg = LaunchConfig {
             grid_dim: (num_tokens as u32, 1, 1),
             block_dim: (threads_per_block, 1, 1),
-            shared_mem_bytes: 0,
+            shared_mem_bytes: shared_mem_size as u32, // Set shared memory size
         };
 
         // Load the appropriate fused kernel
