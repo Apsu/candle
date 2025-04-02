@@ -1071,7 +1071,7 @@ fn slice_src_and_dst<'a, T>(
     (src, dst)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CudaStorage {
     pub slice: CudaStorageSlice,
     pub device: CudaDevice,
