@@ -1,4 +1,5 @@
 #include "cuda_fp16.h"
+#include <stdint.h>
 
 #define WARP_SIZE 32
 
