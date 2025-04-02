@@ -122,6 +122,19 @@ pub trait BackendStorage: Sized {
         mod_shift: &Self,
         epsilon: f32,
     ) -> Result<Self>;
+
+    fn fused_qkv_attention(
+        &self,
+        layout: &Layout,
+        qkv_weights: &Self,
+        qkv_bias: Option<&Self>,
+        query_norm: &Self,
+        key_norm: &Self,
+        proj_weights: &Self,
+        proj_bias: Option<&Self>,
+        pos_encoding: &Self,
+        num_heads: usize,
+    ) -> Result<Self>;
 }
 
 pub trait BackendDevice: Sized + std::fmt::Debug + Clone {

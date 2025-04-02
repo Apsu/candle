@@ -179,6 +179,17 @@ pub enum Op {
         Tensor,
         std::sync::Arc<Box<dyn crate::CustomOp3 + Send + Sync>>,
     ),
+    FusedQkvAttention {
+        arg: Tensor,
+        qkv_weights: Tensor,
+        qkv_bias: Option<Tensor>,
+        query_norm: Tensor,
+        key_norm: Tensor,
+        proj_weights: Tensor,
+        proj_bias: Option<Tensor>,
+        pos_encoding: Tensor,
+        num_heads: usize,
+    },
 }
 
 pub trait UnaryOpT {

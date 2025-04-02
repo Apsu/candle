@@ -2636,6 +2636,86 @@ impl Tensor {
     }
 }
 
+pub trait FusedQkvAttentionExt {
+    fn fused_qkv_attention(
+        &self,
+        qkv_weights: &Tensor,
+        qkv_bias: Option<&Tensor>,
+        query_norm: &Tensor,
+        key_norm: &Tensor,
+        proj_weights: &Tensor,
+        proj_bias: Option<&Tensor>,
+        positional_encoding: &Tensor,
+        num_heads: usize,
+    ) -> Result<Tensor>;
+}
+
+impl FusedQkvAttentionExt for Tensor {
+    fn fused_qkv_attention(
+        &self,
+        qkv_weights: &Tensor,
+        qkv_bias: Option<&Tensor>,
+        query_norm: &Tensor,
+        key_norm: &Tensor,
+        proj_weights: &Tensor,
+        proj_bias: Option<&Tensor>,
+        pos_encoding: &Tensor,
+        num_heads: usize,
+    ) -> Result<Tensor> {
+        if self.elem_count() == 0 {
+            return Ok(self.clone());
+        }
+
+        // Ensure all tensors are on the same device
+        let device = self.device();
+        for tensor in [qkv_weights, query_norm, key_norm, proj_weights, pos_encoding].iter() {
+            if tensor.device() != device {
+                bail!("All tensors must be on the same device for fused_qkv_attention");
+            }
+        }
+
+        if let Some(bias) = qkv_bias {
+            if bias.device() != device {
+                bail!("All tensors must be on the same device for fused_qkv_attention");
+            }
+        }
+
+        if let Some(bias) = proj_bias {
+            if bias.device() != device {
+                bail!("All tensors must be on the same device for fused_qkv_attention");
+            }
+        }
+
+        let storage = self.storage().fused_qkv_attention(
+            self.layout(),
+            &qkv_weights.storage(),
+            qkv_bias.map(|b| &*b.storage()),
+            &query_norm.storage(),
+            &key_norm.storage(),
+            &proj_weights.storage(),
+            proj_bias.map(|b| &*b.storage()),
+            &pos_encoding.storage(),
+            num_heads,
+        )?;
+
+        // Create a new tensor with the same shape
+        let op = BackpropOp::new1(self, |arg| Op::FusedQkvAttention {
+            arg,
+            qkv_weights: qkv_weights.clone(),
+            qkv_bias: qkv_bias.cloned(),
+            query_norm: query_norm.clone(),
+            key_norm: key_norm.clone(),
+            proj_weights: proj_weights.clone(),
+            proj_bias: proj_bias.cloned(),
+            pos_encoding: pos_encoding.clone(),
+            num_heads,
+        });
+
+        // Use the same dimensions as the input
+        Ok(from_storage(storage, self.shape(), op, false))
+    }
+}
+
 macro_rules! bin_trait {
     ($trait:ident, $fn1:ident, $mul:expr, $add:expr) => {
         impl<B: std::borrow::Borrow<Tensor>> std::ops::$trait<B> for Tensor {

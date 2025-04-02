@@ -226,6 +226,156 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
     }
 }
 
+struct FusedQkvAttention<'a> {
+    qkv_weights: &'a CudaStorageSlice,
+    qkv_bias: Option<&'a CudaStorageSlice>,
+    query_norm: &'a CudaStorageSlice,
+    key_norm: &'a CudaStorageSlice,
+    proj_weights: &'a CudaStorageSlice,
+    proj_bias: Option<&'a CudaStorageSlice>,
+    pos_encoding: &'a CudaStorageSlice,
+    num_heads: usize,
+}
+
+impl<'a> Map1 for FusedQkvAttention<'a> {
+    fn f<T: DeviceRepr + WithDType + ValidAsZeroBits>(
+        &self,
+        src: &CudaSlice<T>,
+        dev: &CudaDevice,
+        layout: &Layout,
+    ) -> Result<CudaSlice<T>> {
+        let (batch_size, seq_length, hidden_size) = layout.shape().dims3()?;
+        let head_dim = hidden_size / self.num_heads;
+
+        // Calculate optimal block size based on dimensions
+        let block_size = if seq_length <= 128 { 128 } else { 256 };
+
+        // Calculate shared memory requirements
+        let shared_mem_size = match T::DTYPE {
+            DType::BF16 => {
+                // For Q/K norm weights + attention scores
+                (2 * head_dim + seq_length * seq_length) * std::mem::size_of::<bf16>()
+            },
+            DType::F16 => {
+                (2 * head_dim + seq_length * seq_length) * std::mem::size_of::<f16>()
+            },
+            DType::F32 => {
+                (2 * head_dim + seq_length * seq_length) * std::mem::size_of::<f32>()
+            },
+            _ => 0,
+        };
+
+        let cfg = LaunchConfig {
+            grid_dim: (batch_size * seq_length as u32, 1, 1),
+            block_dim: (block_size, 1, 1),
+            shared_mem_bytes: shared_mem_size as u32,
+        };
+
+        // Load the appropriate kernel
+        let kernel_name = match T::DTYPE {
+            DType::BF16 => {
+                if dev.has_capability(9, 0) {
+                    "fused_qkv_attention_bf16_hopper"
+                } else {
+                    "fused_qkv_attention_bf16"
+                }
+            },
+            DType::F16 => "fused_qkv_attention_f16",
+            DType::F32 => "fused_qkv_attention_f32",
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let func = dev.get_or_load_func(
+            kernel_name,
+            kernels::FUSED_QKV_ATTENTION,
+        )?;
+
+        // Prepare output storage
+        let out = unsafe { dev.alloc::<T>(batch_size * seq_length * hidden_size) }?;
+
+        // Get the input and parameters slices
+        let src = &src.slice(layout.start_offset()..);
+
+        // Extract device pointers
+        let qkv_weights_ptr = match self.qkv_weights {
+            CudaStorageSlice::BF16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let qkv_bias_ptr = match self.qkv_bias {
+            Some(CudaStorageSlice::BF16(slice)) => *slice.device_ptr(),
+            Some(CudaStorageSlice::F16(slice)) => *slice.device_ptr(),
+            Some(CudaStorageSlice::F32(slice)) => *slice.device_ptr(),
+            None => std::ptr::null(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let query_norm_ptr = match self.query_norm {
+            CudaStorageSlice::BF16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let key_norm_ptr = match self.key_norm {
+            CudaStorageSlice::BF16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let proj_weights_ptr = match self.proj_weights {
+            CudaStorageSlice::BF16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let proj_bias_ptr = match self.proj_bias {
+            Some(CudaStorageSlice::BF16(slice)) => *slice.device_ptr(),
+            Some(CudaStorageSlice::F16(slice)) => *slice.device_ptr(),
+            Some(CudaStorageSlice::F32(slice)) => *slice.device_ptr(),
+            None => std::ptr::null(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let pe_ptr = match self.pos_encoding {
+            CudaStorageSlice::BF16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F16(slice) => *slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
+            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+        };
+
+        let has_qkv_bias = self.qkv_bias.is_some() as i32;
+        let has_proj_bias = self.proj_bias.is_some() as i32;
+
+        // Launch the kernel
+        let params = (
+            &out,
+            src,
+            qkv_weights_ptr,
+            qkv_bias_ptr,
+            query_norm_ptr,
+            key_norm_ptr,
+            proj_weights_ptr,
+            proj_bias_ptr,
+            pe_ptr,
+            batch_size,
+            seq_length,
+            hidden_size,
+            self.num_heads,
+            has_qkv_bias,
+            has_proj_bias,
+        );
+
+        unsafe { func.launch(cfg, params) }?;
+
+        Ok(out)
+    }
+}
+
 struct Im2Col1D {
     l_k: usize,
     stride: usize,
@@ -1382,6 +1532,33 @@ impl BackendStorage for CudaStorage {
             norm_weight: &norm_weight.slice,
             mod_scale: &mod_scale.slice,
             mod_shift: &mod_shift.slice,
+        }
+        .map(&self.slice, &device, layout)?;
+        Ok(Self { slice, device })
+    }
+
+    fn fused_qkv_attention(
+        &self,
+        layout: &Layout,
+        qkv_weights: &Self,
+        qkv_bias: Option<&Self>,
+        query_norm: &Self,
+        key_norm: &Self,
+        proj_weights: &Self,
+        proj_bias: Option<&Self>,
+        pos_encoding: &Self,
+        num_heads: usize,
+    ) -> Result<Self> {
+        let device = self.device().clone();
+        let slice = FusedQkvAttention {
+            qkv_weights: &qkv_weights.slice,
+            qkv_bias: qkv_bias.map(|b| &b.slice),
+            query_norm: &query_norm.slice,
+            key_norm: &key_norm.slice,
+            proj_weights: &proj_weights.slice,
+            proj_bias: proj_bias.map(|b| &b.slice),
+            pos_encoding: &pos_encoding.slice,
+            num_heads,
         }
         .map(&self.slice, &device, layout)?;
         Ok(Self { slice, device })
