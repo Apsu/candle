@@ -230,12 +230,19 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
 
 struct FusedQkvAttention<'a> {
     qkv_weights: &'a CudaStorageSlice,
+    qkv_weights_layout: &'a Layout,
     qkv_bias: Option<&'a CudaStorageSlice>,
+    qkv_bias_layout: Option<&'a Layout>,
     query_norm: &'a CudaStorageSlice,
+    query_norm_layout: &'a Layout,
     key_norm: &'a CudaStorageSlice,
+    key_norm_layout: &'a Layout,
     proj_weights: &'a CudaStorageSlice,
+    proj_weights_layout: &'a Layout,
     proj_bias: Option<&'a CudaStorageSlice>,
+    proj_bias_layout: Option<&'a Layout>,
     pos_encoding: &'a CudaStorageSlice,
+    pos_encoding_layout: &'a Layout,
     num_heads: usize,
 }
 
@@ -268,18 +275,7 @@ impl<'a> Map1 for FusedQkvAttention<'a> {
 
         // Load the appropriate kernel
         let kernel_name = match T::DTYPE {
-            DType::BF16 => {
-                // Check compute capability for BF16 support
-                // Use capability 8.0+ for BF16 support
-                if dev.compute_capability().0 >= 8 {
-                    "fused_qkv_attention_bf16"
-                } else {
-                    return Err(CudaError::UnsupportedDtype {
-                        dtype: T::DTYPE,
-                        op: "fused_qkv_attention",
-                    }.into());
-                }
-            },
+            DType::BF16 => "fused_qkv_attention_bf16",
             DType::F16 => "fused_qkv_attention_f16",
             DType::F32 => "fused_qkv_attention_f32",
             _ => return Err(CudaError::UnsupportedDtype {
@@ -1566,26 +1562,41 @@ impl BackendStorage for CudaStorage {
         &self,
         layout: &Layout,
         qkv_weights: &Self,
+        qkv_weights_layout: &Layout,
         qkv_bias: Option<&Self>,
+        qkv_bias_layout: Option<&Layout>,
         query_norm: &Self,
+        query_norm_layout: &Layout,
         key_norm: &Self,
+        key_norm_layout: &Layout,
         proj_weights: &Self,
+        proj_weights_layout: &Layout,
         proj_bias: Option<&Self>,
+        proj_bias_layout: Option<&Layout>,
         pos_encoding: &Self,
+        pos_encoding_layout: &Layout,
         num_heads: usize,
     ) -> Result<Self> {
         let device = self.device().clone();
-        let slice = FusedQkvAttention {
+        let fused_op = FusedQkvAttention {
             qkv_weights: &qkv_weights.slice,
+            qkv_weights_layout,
             qkv_bias: qkv_bias.map(|b| &b.slice),
+            qkv_bias_layout,
             query_norm: &query_norm.slice,
+            query_norm_layout,
             key_norm: &key_norm.slice,
+            key_norm_layout,
             proj_weights: &proj_weights.slice,
+            proj_weights_layout,
             proj_bias: proj_bias.map(|b| &b.slice),
+            proj_bias_layout,
             pos_encoding: &pos_encoding.slice,
+            pos_encoding_layout,
             num_heads,
-        }
-        .map(&self.slice, &device, layout)?;
+        };
+
+        let slice = fused_op.map(&self.slice, &device, layout)?;
         Ok(Self { slice, device })
     }
 
