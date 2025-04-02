@@ -172,19 +172,19 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
         // Get the input and parameters slices
         let src = &src.slice(layout.start_offset()..);
 
-        // Extract device pointers correctly
+        // Extract device pointers correctly and dereference them
         let norm_weight_ptr = match self.norm_weight {
-            CudaStorageSlice::F32(slice) => slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
             _ => crate::bail!("norm_weight must be f32"),
         };
 
         let mod_scale_ptr = match self.mod_scale {
-            CudaStorageSlice::F32(slice) => slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
             _ => crate::bail!("mod_scale must be f32"),
         };
 
         let mod_shift_ptr = match self.mod_shift {
-            CudaStorageSlice::F32(slice) => slice.device_ptr(),
+            CudaStorageSlice::F32(slice) => *slice.device_ptr(),
             _ => crate::bail!("mod_shift must be f32"),
         };
 
@@ -192,9 +192,9 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
         let params = (
             &out,
             src,
-            norm_weight_ptr,  // Pass u64 value, not reference
-            mod_scale_ptr,    // Pass u64 value, not reference
-            mod_shift_ptr,    // Pass u64 value, not reference
+            norm_weight_ptr,  // Raw u64 value
+            mod_scale_ptr,    // Raw u64 value
+            mod_shift_ptr,    // Raw u64 value
             self.epsilon,
             num_tokens as i32,
             hidden_size as i32
