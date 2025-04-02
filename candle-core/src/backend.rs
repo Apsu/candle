@@ -3,7 +3,7 @@
 use crate::op::{BinaryOpT, CmpOp, ReduceOp, UnaryOpT};
 use crate::{CpuStorage, DType, Layout, Result, Shape};
 
-pub trait BackendStorage: Sized {
+pub trait BackendStorage: Sized + std::fmt::Debug {
     type Device: BackendDevice;
 
     fn try_clone(&self, _: &Layout) -> Result<Self>;
@@ -127,12 +127,19 @@ pub trait BackendStorage: Sized {
         &self,
         layout: &Layout,
         qkv_weights: &Self,
+        qkv_weights_layout: &Layout,
         qkv_bias: Option<&Self>,
+        qkv_bias_layout: Option<&Layout>,
         query_norm: &Self,
+        query_norm_layout: &Layout,
         key_norm: &Self,
+        key_norm_layout: &Layout,
         proj_weights: &Self,
+        proj_weights_layout: &Layout,
         proj_bias: Option<&Self>,
+        proj_bias_layout: Option<&Layout>,
         pos_encoding: &Self,
+        pos_encoding_layout: &Layout,
         num_heads: usize,
     ) -> Result<Self>;
 }

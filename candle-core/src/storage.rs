@@ -785,4 +785,178 @@ impl Storage {
             .bt()),
         }
     }
+
+    pub fn fused_qkv_attention(
+        &self,
+        layout: &Layout,
+        qkv_weights: &Self,
+        qkv_weights_layout: &Layout,
+        qkv_bias: Option<&Self>,
+        qkv_bias_layout: Option<&Layout>,
+        query_norm: &Self,
+        query_norm_layout: &Layout,
+        key_norm: &Self,
+        key_norm_layout: &Layout,
+        proj_weights: &Self,
+        proj_weights_layout: &Layout,
+        proj_bias: Option<&Self>,
+        proj_bias_layout: Option<&Layout>,
+        pos_encoding: &Self,
+        pos_encoding_layout: &Layout,
+        num_heads: usize,
+    ) -> Result<Self> {
+        // Ensure all inputs are on the same device
+        self.same_device(qkv_weights, "fused_qkv_attention")?;
+        self.same_device(query_norm, "fused_qkv_attention")?;
+        self.same_device(key_norm, "fused_qkv_attention")?;
+        self.same_device(proj_weights, "fused_qkv_attention")?;
+        self.same_device(pos_encoding, "fused_qkv_attention")?;
+
+        if let Some(bias) = qkv_bias {
+            self.same_device(bias, "fused_qkv_attention")?;
+        }
+
+        if let Some(bias) = proj_bias {
+            self.same_device(bias, "fused_qkv_attention")?;
+        }
+
+        match (self, qkv_weights, qkv_bias, query_norm, key_norm, proj_weights, proj_bias, pos_encoding) {
+            (
+                Self::Cpu(self_s),
+                Self::Cpu(qkv_weights_s),
+                maybe_qkv_bias,
+                Self::Cpu(query_norm_s),
+                Self::Cpu(key_norm_s),
+                Self::Cpu(proj_weights_s),
+                maybe_proj_bias,
+                Self::Cpu(pos_encoding_s)
+            ) => {
+                let qkv_bias_s = match maybe_qkv_bias {
+                    Some(Self::Cpu(s)) => Some(s),
+                    Some(_) => unreachable!(), // Due to same_device check
+                    None => None,
+                };
+
+                let proj_bias_s = match maybe_proj_bias {
+                    Some(Self::Cpu(s)) => Some(s),
+                    Some(_) => unreachable!(), // Due to same_device check
+                    None => None,
+                };
+
+                let storage = self_s.fused_qkv_attention(
+                    layout,
+                    qkv_weights_s,
+                    qkv_weights_layout,
+                    qkv_bias_s,
+                    qkv_bias_layout,
+                    query_norm_s,
+                    query_norm_layout,
+                    key_norm_s,
+                    key_norm_layout,
+                    proj_weights_s,
+                    proj_weights_layout,
+                    proj_bias_s,
+                    proj_bias_layout,
+                    pos_encoding_s,
+                    pos_encoding_layout,
+                    num_heads,
+                )?;
+
+                Ok(Self::Cpu(storage))
+            },
+            #[cfg(feature = "cuda")]
+            (
+                Self::Cuda(self_s),
+                Self::Cuda(qkv_weights_s),
+                maybe_qkv_bias,
+                Self::Cuda(query_norm_s),
+                Self::Cuda(key_norm_s),
+                Self::Cuda(proj_weights_s),
+                maybe_proj_bias,
+                Self::Cuda(pos_encoding_s)
+            ) => {
+                let qkv_bias_s = match maybe_qkv_bias {
+                    Some(Self::Cuda(s)) => Some(s),
+                    Some(_) => unreachable!(), // Due to same_device check
+                    None => None,
+                };
+
+                let proj_bias_s = match maybe_proj_bias {
+                    Some(Self::Cuda(s)) => Some(s),
+                    Some(_) => unreachable!(), // Due to same_device check
+                    None => None,
+                };
+
+                let storage = self_s.fused_qkv_attention(
+                    layout,
+                    qkv_weights_s,
+                    qkv_weights_layout,
+                    qkv_bias_s,
+                    qkv_bias_layout,
+                    query_norm_s,
+                    query_norm_layout,
+                    key_norm_s,
+                    key_norm_layout,
+                    proj_weights_s,
+                    proj_weights_layout,
+                    proj_bias_s,
+                    proj_bias_layout,
+                    pos_encoding_s,
+                    pos_encoding_layout,
+                    num_heads,
+                )?;
+
+                Ok(Self::Cuda(storage))
+            },
+            #[cfg(feature = "metal")]
+            (
+                Self::Metal(self_s),
+                Self::Metal(qkv_weights_s),
+                maybe_qkv_bias,
+                Self::Metal(query_norm_s),
+                Self::Metal(key_norm_s),
+                Self::Metal(proj_weights_s),
+                maybe_proj_bias,
+                Self::Metal(pos_encoding_s)
+            ) => {
+                let qkv_bias_s = match maybe_qkv_bias {
+                    Some(Self::Metal(s)) => Some(s),
+                    Some(_) => unreachable!(), // Due to same_device check
+                    None => None,
+                };
+
+                let proj_bias_s = match maybe_proj_bias {
+                    Some(Self::Metal(s)) => Some(s),
+                    Some(_) => unreachable!(), // Due to same_device check
+                    None => None,
+                };
+
+                let storage = self_s.fused_qkv_attention(
+                    layout,
+                    qkv_weights_s,
+                    qkv_weights_layout,
+                    qkv_bias_s,
+                    qkv_bias_layout,
+                    query_norm_s,
+                    query_norm_layout,
+                    key_norm_s,
+                    key_norm_layout,
+                    proj_weights_s,
+                    proj_weights_layout,
+                    proj_bias_s,
+                    proj_bias_layout,
+                    pos_encoding_s,
+                    pos_encoding_layout,
+                    num_heads,
+                )?;
+
+                Ok(Self::Metal(storage))
+            },
+            _ => {
+                // This should not happen due to same_device checks above,
+                // but we're being defensive
+                Err(Error::Msg("Device mismatch in fused_qkv_attention".to_string()).bt())
+            }
+        }
+    }
 }

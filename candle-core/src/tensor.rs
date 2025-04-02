@@ -2603,37 +2603,37 @@ impl Tensor {
         Ok(result)
     }
 
-    /// Applies fused normalization and modulation in a single operation.
-    /// This combines layer normalization with scale and shift operations.
-    ///
-    /// # Arguments
-    ///
-    /// * `layout` - The layout of the input tensor.
-    /// * `norm_weight` - Normalization weights tensor.
-    /// * `mod_scale` - Modulation scale tensor (same shape as input).
-    /// * `mod_shift` - Modulation shift tensor (same shape as input).
-    /// * `epsilon` - Small constant to avoid division by zero.
-    ///
-    /// # Returns
-    ///
-    /// A new tensor after applying normalization, scaling, and shifting.
-    pub fn fused_norm_scale_shift(
-        &self,
-        layout: &Layout,
-        norm_weight: &Tensor,
-        mod_scale: &Tensor,
-        mod_shift: &Tensor,
-        epsilon: f32,
-    ) -> Result<Tensor> {
-        // Call the implementation from the fused_norm_scale_shift module
-        crate::fused_norm_scale_shift::fused_norm_scale_shift(
-            self,
-            norm_weight,
-            mod_scale,
-            mod_shift,
-            epsilon
-        )
-    }
+    // Applies fused normalization and modulation in a single operation.
+    // This combines layer normalization with scale and shift operations.
+    //
+    // # Arguments
+    //
+    // * `layout` - The layout of the input tensor.
+    // * `norm_weight` - Normalization weights tensor.
+    // * `mod_scale` - Modulation scale tensor (same shape as input).
+    // * `mod_shift` - Modulation shift tensor (same shape as input).
+    // * `epsilon` - Small constant to avoid division by zero.
+    //
+    // # Returns
+    //
+    // A new tensor after applying normalization, scaling, and shifting.
+    // pub fn fused_norm_scale_shift(
+    //     &self,
+    //     layout: &Layout,
+    //     norm_weight: &Tensor,
+    //     mod_scale: &Tensor,
+    //     mod_shift: &Tensor,
+    //     epsilon: f32,
+    // ) -> Result<Tensor> {
+    //     // Call the implementation from the fused_norm_scale_shift module
+    //     crate::fused_norm_scale_shift::fused_norm_scale_shift(
+    //         self,
+    //         norm_weight,
+    //         mod_scale,
+    //         mod_shift,
+    //         epsilon
+    //     )
+    // }
 }
 
 // Add this trait to tensor.rs
@@ -2690,21 +2690,43 @@ impl FusedQkvAttentionExt for Tensor {
             }
         }
 
-        // Use storage_() to get the actual storage, not the guard
-        let storage = self.storage_().fused_qkv_attention(
+        // Access the backend storage directly to perform fused operation
+        // Create locks that will live for the duration of the function
+        let self_storage = self.storage();
+        let qkv_weights_storage = qkv_weights.storage();
+        let query_norm_storage = query_norm.storage();
+        let key_norm_storage = key_norm.storage();
+        let proj_weights_storage = proj_weights.storage();
+        let pos_encoding_storage = pos_encoding.storage();
+
+        // Optional bias locks
+        let qkv_bias_storage = qkv_bias.as_ref().map(|b| b.storage());
+        let proj_bias_storage = proj_bias.as_ref().map(|b| b.storage());
+
+        let storage = self_storage.fused_qkv_attention(
             self.layout(),
-            &qkv_weights.storage_(),
-            qkv_bias.map(|b| &*b.storage_()),
-            &query_norm.storage_(),
-            &key_norm.storage_(),
-            &proj_weights.storage_(),
-            proj_bias.map(|b| &*b.storage_()),
-            &pos_encoding.storage_(),
+            &qkv_weights_storage,
+            qkv_weights.layout(),
+            qkv_bias_storage.as_deref(),
+            qkv_bias.map(|b| b.layout()),
+            &query_norm_storage,
+            query_norm.layout(),
+            &key_norm_storage,
+            key_norm.layout(),
+            &proj_weights_storage,
+            proj_weights.layout(),
+            proj_bias_storage.as_deref(),
+            proj_bias.map(|b| b.layout()),
+            &pos_encoding_storage,
+            pos_encoding.layout(),
             num_heads,
         )?;
 
-        // Create tensor without backprop op for now
-        Ok(crate::tensor::from_storage(storage, self.shape().clone(), None))
+        // Create a stub backprop operation for inference-only use
+        let op = BackpropOp::none();
+
+        // Return the result wrapped in a tensor
+        Ok(from_storage(storage, self.shape().clone(), op, false))
     }
 }
 

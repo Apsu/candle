@@ -145,6 +145,10 @@ impl Tensor {
                         }
                     }
                     Op::Reduce(_, ReduceOp::ArgMin | ReduceOp::ArgMax, _) => nodes,
+                    // &Op::FusedQkvAttention { .. } => {
+                    //     // For now, just skip backpropagation for this op
+                    //     vec![]
+                    // },
                 }
             } else {
                 nodes
@@ -706,6 +710,11 @@ impl Tensor {
                         let sum_grad = grads.or_insert(arg)?;
                         *sum_grad = sum_grad.add(&arg_grad)?
                     }
+                    // Op::FusedQkvAttention { .. } => {
+                    //     // For now, just skip backpropagation for this op
+                    //     // as it is not implemented yet.
+                    //     crate::bail!("backpropagation for FusedQkvAttention is not implemented")
+                    // }
                 };
             }
         }

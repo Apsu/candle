@@ -208,15 +208,22 @@ impl crate::backend::BackendStorage for MetalStorage {
 
     fn fused_qkv_attention(
         &self,
-        _layout: &Layout,
-        _qkv_weights: &Self,
-        _qkv_bias: Option<&Self>,
-        _query_norm: &Self,
-        _key_norm: &Self,
-        _proj_weights: &Self,
-        _proj_bias: Option<&Self>,
-        _pos_encoding: &Self,
-        _num_heads: usize,
+        layout: &Layout,
+        qkv_weights: &Self,
+        qkv_weights_layout: &Layout,
+        qkv_bias: Option<&Self>,
+        qkv_bias_layout: Option<&Layout>,
+        query_norm: &Self,
+        query_norm_layout: &Layout,
+        key_norm: &Self,
+        key_norm_layout: &Layout,
+        proj_weights: &Self,
+        proj_weights_layout: &Layout,
+        proj_bias: Option<&Self>,
+        proj_bias_layout: Option<&Layout>,
+        pos_encoding: &Self,
+        pos_encoding_layout: &Layout,
+        num_heads: usize,
     ) -> Result<Self> {
         Err(Error::NotCompiledWithMetalSupport)
     }
