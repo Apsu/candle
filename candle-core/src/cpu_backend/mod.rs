@@ -2522,6 +2522,22 @@ impl BackendStorage for CpuStorage {
             }
         }
     }
+
+    fn fused_qkv_attention(
+        &self,
+        layout: &Layout,
+        qkv_weights: &Self,
+        qkv_bias: Option<&Self>,
+        query_norm: &Self,
+        key_norm: &Self,
+        proj_weights: &Self,
+        proj_bias: Option<&Self>,
+        pos_encoding: &Self,
+        num_heads: usize,
+    ) -> Result<Self> {
+        // For CPU, we just return a not implemented error
+        bail!("fused_qkv_attention not implemented for CPU backend")
+    }
 }
 
 impl BackendDevice for CpuDevice {

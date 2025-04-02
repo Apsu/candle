@@ -173,8 +173,10 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
             _ => 0,
         };
 
+        let grid_dim = (u32::try_from(num_tokens).unwrap(), 1, 1);
+
         let cfg = LaunchConfig {
-            grid_dim: (num_tokens as u32, 1, 1),
+            grid_dim,
             block_dim: (threads_per_block, 1, 1),
             shared_mem_bytes: shared_mem_size as u32, // Set shared memory size
         };
@@ -265,8 +267,10 @@ impl<'a> Map1 for FusedQkvAttention<'a> {
             _ => 0,
         };
 
+        let grid_dim = (u32::try_from(batch_size * seq_length).unwrap(), 1, 1);
+
         let cfg = LaunchConfig {
-            grid_dim: (batch_size * seq_length as u32, 1, 1),
+            grid_dim,
             block_dim: (block_size, 1, 1),
             shared_mem_bytes: shared_mem_size as u32,
         };
@@ -274,10 +278,14 @@ impl<'a> Map1 for FusedQkvAttention<'a> {
         // Load the appropriate kernel
         let kernel_name = match T::DTYPE {
             DType::BF16 => {
-                if dev.has_capability(9, 0) {
-                    "fused_qkv_attention_bf16_hopper"
-                } else {
+                if device_has_bf16_support(&dev) {
                     "fused_qkv_attention_bf16"
+                } else {
+                    return Err(CudaError::UnsupportedDtype {
+                        dtype: T::DTYPE,
+                        op: "fused_qkv_attention".to_string(),
+                    }
+                    .bt());
                 }
             },
             DType::F16 => "fused_qkv_attention_f16",
@@ -308,8 +316,12 @@ impl<'a> Map1 for FusedQkvAttention<'a> {
             Some(CudaStorageSlice::BF16(slice)) => *slice.device_ptr(),
             Some(CudaStorageSlice::F16(slice)) => *slice.device_ptr(),
             Some(CudaStorageSlice::F32(slice)) => *slice.device_ptr(),
-            None => std::ptr::null(),
-            _ => return Err(CudaError::UnsupportedDtype(T::DTYPE).into()),
+            None => 0, // Use 0 instead of null
+            _ => return Err(CudaError::UnsupportedDtype {
+                dtype: T::DTYPE,
+                op: "fused_qkv_attention".to_string(),
+            }
+            .bt()),
         };
 
         let query_norm_ptr = match self.query_norm {

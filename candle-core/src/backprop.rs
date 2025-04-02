@@ -145,6 +145,10 @@ impl Tensor {
                         }
                     }
                     Op::Reduce(_, ReduceOp::ArgMin | ReduceOp::ArgMax, _) => nodes,
+                    &Op::FusedQkvAttention { .. } => {
+                        // For now, just skip backpropagation for this op
+                        vec![]
+                    },
                 }
             } else {
                 nodes

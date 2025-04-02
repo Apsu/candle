@@ -2689,11 +2689,11 @@ impl FusedQkvAttentionExt for Tensor {
         let storage = self.storage().fused_qkv_attention(
             self.layout(),
             &qkv_weights.storage(),
-            qkv_bias.map(|b| &*b.storage()),
+            qkv_bias.map(|b| &b.storage()),
             &query_norm.storage(),
             &key_norm.storage(),
             &proj_weights.storage(),
-            proj_bias.map(|b| &*b.storage()),
+            proj_bias.map(|b| &b.storage()),
             &pos_encoding.storage(),
             num_heads,
         )?;
