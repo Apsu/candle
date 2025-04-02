@@ -190,6 +190,17 @@ impl crate::backend::BackendStorage for CudaStorage {
     fn upsample_nearest2d(&self, _: &Layout, _: usize, _: usize) -> Result<Self> {
         Err(Error::NotCompiledWithCudaSupport)
     }
+
+    fn fused_norm_scale_shift(
+        &self,
+        _layout: &Layout,
+        _norm_weight: &Self,
+        _mod_scale: &Self,
+        _mod_shift: &Self,
+        _epsilon: f32,
+    ) -> Result<Self> {
+        Err(Error::NotCompiledWithCudaSupport)
+    }
 }
 
 impl crate::backend::BackendDevice for CudaDevice {

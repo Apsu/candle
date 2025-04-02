@@ -129,14 +129,14 @@ impl Map1 for Elu {
     }
 }
 
-struct FusedNormScaleShift {
+struct FusedNormScaleShift<'a> {
     epsilon: f32,
-    norm_weight: CudaStorage,
-    mod_scale: CudaStorage,
-    mod_shift: CudaStorage,
+    norm_weight: &'a CudaStorage,
+    mod_scale: &'a CudaStorage,
+    mod_shift: &'a CudaStorage,
 }
 
-impl Map1 for FusedNormScaleShift {
+impl<'a> Map1 for FusedNormScaleShift<'a> {
     fn f<T: DeviceRepr + WithDType + ValidAsZeroBits>(
         &self,
         src: &CudaSlice<T>,
@@ -172,30 +172,29 @@ impl Map1 for FusedNormScaleShift {
         // Get the input and parameters slices
         let src = &src.slice(layout.start_offset()..);
 
-        // Fix the type issues by getting device pointers correctly
-        let norm_weight = match &self.norm_weight.slice {
+        // Fix the device pointer issues
+        let norm_weight_ptr = match &self.norm_weight.slice {
             CudaStorageSlice::F32(slice) => slice.device_ptr(),
-            // Add other type matches as needed
             _ => crate::bail!("norm_weight must be f32, got {:?}", self.norm_weight.dtype()),
         };
 
-        let mod_scale = match &self.mod_scale.slice {
+        let mod_scale_ptr = match &self.mod_scale.slice {
             CudaStorageSlice::F32(slice) => slice.device_ptr(),
             _ => crate::bail!("mod_scale must be f32, got {:?}", self.mod_scale.dtype()),
         };
 
-        let mod_shift = match &self.mod_shift.slice {
+        let mod_shift_ptr = match &self.mod_shift.slice {
             CudaStorageSlice::F32(slice) => slice.device_ptr(),
             _ => crate::bail!("mod_shift must be f32, got {:?}", self.mod_shift.dtype()),
         };
 
-        // Set up kernel parameters - don't pass device pointers directly
+        // Pass the raw pointer values, not references to them
         let params = (
             &out,
             src,
-            *norm_weight,  // Dereference to get the raw pointer value
-            *mod_scale,    // Dereference to get the raw pointer value
-            *mod_shift,    // Dereference to get the raw pointer value
+            norm_weight_ptr,  // Pass the raw pointer
+            mod_scale_ptr,    // Pass the raw pointer
+            mod_shift_ptr,    // Pass the raw pointer
             self.epsilon,
             num_tokens as i32,
             hidden_size as i32
@@ -1361,9 +1360,9 @@ impl BackendStorage for CudaStorage {
         let device = self.device().clone();
         let slice = FusedNormScaleShift {
             epsilon,
-            norm_weight: norm_weight.clone(),
-            mod_scale: mod_scale.clone(),
-            mod_shift: mod_shift.clone(),
+            norm_weight,
+            mod_scale,
+            mod_shift,
         }
         .map(&self.slice, &device, layout)?;
         Ok(Self { slice, device })
