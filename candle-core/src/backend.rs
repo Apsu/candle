@@ -113,6 +113,15 @@ pub trait BackendStorage: Sized {
         _src_offset: usize,
         _dst_offset: usize,
     ) -> Result<()>;
+
+    fn fused_norm_scale_shift(
+        &self,
+        layout: &Layout,
+        norm_weight: &Self,
+        mod_scale: &Self,
+        mod_shift: &Self,
+        epsilon: f32,
+    ) -> Result<Self>;
 }
 
 pub trait BackendDevice: Sized + std::fmt::Debug + Clone {

@@ -171,6 +171,8 @@ impl Map1 for FusedNormScaleShift {
 
         // Get the input and parameters slices
         let src = &src.slice(layout.start_offset()..);
+
+        // Fix the type issues by getting device pointers correctly
         let norm_weight = match &self.norm_weight.slice {
             CudaStorageSlice::F32(slice) => slice.device_ptr(),
             // Add other type matches as needed
@@ -187,13 +189,13 @@ impl Map1 for FusedNormScaleShift {
             _ => crate::bail!("mod_shift must be f32, got {:?}", self.mod_shift.dtype()),
         };
 
-        // Set up kernel parameters
+        // Set up kernel parameters - don't pass device pointers directly
         let params = (
             &out,
             src,
-            norm_weight,
-            mod_scale,
-            mod_shift,
+            *norm_weight,  // Dereference to get the raw pointer value
+            *mod_scale,    // Dereference to get the raw pointer value
+            *mod_shift,    // Dereference to get the raw pointer value
             self.epsilon,
             num_tokens as i32,
             hidden_size as i32
@@ -1070,7 +1072,7 @@ fn slice_src_and_dst<'a, T>(
     (src, dst)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CudaStorage {
     pub slice: CudaStorageSlice,
     pub device: CudaDevice,
