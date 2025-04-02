@@ -144,19 +144,18 @@ extern "C" __global__ void fused_qkv_attention_bf16(
 
             // Step 4: Apply RoPE (Rotary Positional Embedding)
             float q_rot = 0.0f, k_rot = 0.0f;
-            if (dim_idx % 2 == 0) {
-                // Even indices - cosine
+            if (dim_idx % 2 == 0 && dim_idx + 1 < head_dim) {
+                // Safe access for paired indices
                 float cos_val = __bfloat162float(pe[local_seq_idx * head_dim/2 + dim_idx/2]);
                 float sin_val = __bfloat162float(pe[local_seq_idx * head_dim/2 + dim_idx/2 + head_dim/4]);
 
-                // Add boundary check before accessing dim_idx+1
-                if (dim_idx + 1 < head_dim) {
-                    q_rot = q_val * cos_val - __bfloat162float(s_qkv[head_idx * head_dim + dim_idx+1]) * sin_val;
-                    k_rot = k_val * cos_val - __bfloat162float(s_qkv[hidden_size + head_idx * head_dim + dim_idx+1]) * sin_val;
-                } else {
-                    q_rot = q_val * cos_val;
-                    k_rot = k_val * cos_val;
-                }
+                q_rot = q_val * cos_val - __bfloat162float(s_qkv[head_idx * head_dim + dim_idx+1]) * sin_val;
+                k_rot = k_val * cos_val - __bfloat162float(s_qkv[hidden_size + head_idx * head_dim + dim_idx+1]) * sin_val;
+            } else if (dim_idx % 2 == 0) {
+                // Handle boundary case
+                float cos_val = __bfloat162float(pe[local_seq_idx * head_dim/2 + dim_idx/2]);
+                q_rot = q_val * cos_val;
+                k_rot = k_val * cos_val;
             } else {
                 // Odd indices - sine
                 float cos_val = __bfloat162float(pe[local_seq_idx * head_dim/2 + (dim_idx-1)/2]);
