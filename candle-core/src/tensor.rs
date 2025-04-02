@@ -2708,17 +2708,6 @@ impl FusedQkvAttentionExt for Tensor {
     }
 }
 
-// Add this method to Device
-impl Device {
-    pub fn same_device(&self, other: &Device) -> bool {
-        match (self, other) {
-            (Device::Cpu, Device::Cpu) => true,
-            (Device::Cuda(_), Device::Cuda(_)) => true,
-            (Device::Metal(_), Device::Metal(_)) => true,
-            _ => false,
-        }
-    }
-}
 
 macro_rules! bin_trait {
     ($trait:ident, $fn1:ident, $mul:expr, $add:expr) => {
