@@ -2536,7 +2536,7 @@ impl BackendStorage for CpuStorage {
         num_heads: usize,
     ) -> Result<Self> {
         // For CPU, we just return a not implemented error
-        bail!("fused_qkv_attention not implemented for CPU backend")
+        crate::bail!("fused_qkv_attention not implemented for CPU backend")
     }
 }
 

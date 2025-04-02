@@ -205,6 +205,21 @@ impl crate::backend::BackendStorage for MetalStorage {
     ) -> Result<Self> {
         Err(Error::NotCompiledWithMetalSupport)
     }
+
+    fn fused_qkv_attention(
+        &self,
+        _layout: &Layout,
+        _qkv_weights: &Self,
+        _qkv_bias: Option<&Self>,
+        _query_norm: &Self,
+        _key_norm: &Self,
+        _proj_weights: &Self,
+        _proj_bias: Option<&Self>,
+        _pos_encoding: &Self,
+        _num_heads: usize,
+    ) -> Result<Self> {
+        Err(Error::NotCompiledWithMetalSupport)
+    }
 }
 
 impl crate::backend::BackendDevice for MetalDevice {

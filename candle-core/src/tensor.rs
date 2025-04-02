@@ -2645,7 +2645,7 @@ pub trait FusedQkvAttentionExt {
         key_norm: &Tensor,
         proj_weights: &Tensor,
         proj_bias: Option<&Tensor>,
-        positional_encoding: &Tensor,
+        pos_encoding: &Tensor,
         num_heads: usize,
     ) -> Result<Tensor>;
 }
@@ -2713,6 +2713,17 @@ impl FusedQkvAttentionExt for Tensor {
 
         // Use the same dimensions as the input
         Ok(from_storage(storage, self.shape(), op, false))
+    }
+}
+
+impl Device {
+    pub fn same_device(&self, other: &Device) -> bool {
+        match (self, other) {
+            (Device::Cpu, Device::Cpu) => true,
+            (Device::Cuda(_), Device::Cuda(_)) => true,
+            (Device::Metal(_), Device::Metal(_)) => true,
+            _ => false,
+        }
     }
 }
 

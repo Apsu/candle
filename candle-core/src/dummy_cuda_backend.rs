@@ -201,6 +201,21 @@ impl crate::backend::BackendStorage for CudaStorage {
     ) -> Result<Self> {
         Err(Error::NotCompiledWithCudaSupport)
     }
+
+    fn fused_qkv_attention(
+        &self,
+        _layout: &Layout,
+        _qkv_weights: &Self,
+        _qkv_bias: Option<&Self>,
+        _query_norm: &Self,
+        _key_norm: &Self,
+        _proj_weights: &Self,
+        _proj_bias: Option<&Self>,
+        _pos_encoding: &Self,
+        _num_heads: usize,
+    ) -> Result<Self> {
+        Err(Error::NotCompiledWithCudaSupport)
+    }
 }
 
 impl crate::backend::BackendDevice for CudaDevice {
