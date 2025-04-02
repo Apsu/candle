@@ -2502,7 +2502,7 @@ impl BackendStorage for CpuStorage {
             },
             // Add similar implementations for other types (F16, BF16, etc.)
             (CpuStorage::F16(input), CpuStorage::F16(weight), CpuStorage::F16(scale), CpuStorage::F16(shift)) => {
-                let mut result = vec![f16::ZERO; num_tokens * hidden_size];
+                let result = vec![f16::ZERO; num_tokens * hidden_size];
 
                 // Similar implementation for F16 with proper layout handling
                 // (Abbreviated for brevity, would follow same pattern as F32)
@@ -2510,7 +2510,7 @@ impl BackendStorage for CpuStorage {
                 Ok(CpuStorage::F16(result))
             },
             (CpuStorage::BF16(input), CpuStorage::BF16(weight), CpuStorage::BF16(scale), CpuStorage::BF16(shift)) => {
-                let mut result = vec![bf16::ZERO; num_tokens * hidden_size];
+                let result = vec![bf16::ZERO; num_tokens * hidden_size];
 
                 // Similar implementation for BF16 with proper layout handling
                 // (Abbreviated for brevity, would follow same pattern as F32)
