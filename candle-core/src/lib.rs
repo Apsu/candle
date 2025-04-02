@@ -101,7 +101,7 @@ pub use shape::{Shape, D};
 pub use storage::Storage;
 pub use streaming::{StreamTensor, StreamingBinOp, StreamingModule};
 pub use strided_index::{StridedBlocks, StridedIndex};
-pub use tensor::{Tensor, TensorId};
+pub use tensor::{FusedQkvAttentionExt, Tensor, TensorId};
 pub use variable::Var;
 
 #[cfg(feature = "cuda")]
