@@ -64,6 +64,7 @@ mod dtype;
 pub mod dummy_cuda_backend;
 mod dummy_metal_backend;
 pub mod error;
+pub mod fused_norm_scale_shift;
 mod indexer;
 pub mod layout;
 #[cfg(feature = "metal")]

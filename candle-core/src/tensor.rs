@@ -708,9 +708,9 @@ impl Tensor {
     ///
     /// ```rust
     /// use candle_core::{Tensor, Device};
-    /// let a = Tensor::new(&[[0f32, 1.], [2., 3.]], &Device::Cpu)?;
+    /// let a = Tensor::new(&[[0f32, 1., 2.], [3.  , 4., 5.], [6.  , 7., 8.]], &Device::Cpu)?;
     /// let a = a.affine(4., -2.)?;
-    /// assert_eq!(a.to_vec2::<f32>()?, &[[-2.0, 2.0], [6.0, 10.0]]);
+    /// assert_eq!(a.to_vec2::<f32>()?, &[[-2.0, 2.0], [6.0, 10.0], [14.0, 18.0]]);
     /// # Ok::<(), candle_core::Error>(())
     /// ```
     pub fn affine(&self, mul: f64, add: f64) -> Result<Self> {
@@ -2601,6 +2601,38 @@ impl Tensor {
             result = result.index_select(&indices_tensor, dim)?;
         }
         Ok(result)
+    }
+
+    /// Applies fused normalization and modulation in a single operation.
+    /// This combines layer normalization with scale and shift operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `layout` - The layout of the input tensor.
+    /// * `norm_weight` - Normalization weights tensor.
+    /// * `mod_scale` - Modulation scale tensor (same shape as input).
+    /// * `mod_shift` - Modulation shift tensor (same shape as input).
+    /// * `epsilon` - Small constant to avoid division by zero.
+    ///
+    /// # Returns
+    ///
+    /// A new tensor after applying normalization, scaling, and shifting.
+    pub fn fused_norm_scale_shift(
+        &self,
+        layout: &Layout,
+        norm_weight: &Tensor,
+        mod_scale: &Tensor,
+        mod_shift: &Tensor,
+        epsilon: f32,
+    ) -> Result<Tensor> {
+        // Call the implementation from the fused_norm_scale_shift module
+        crate::fused_norm_scale_shift::fused_norm_scale_shift(
+            self,
+            norm_weight,
+            mod_scale,
+            mod_shift,
+            epsilon
+        )
     }
 }
 

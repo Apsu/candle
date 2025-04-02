@@ -130,54 +130,78 @@ impl Map1 for Elu {
 }
 
 struct FusedNormScaleShift {
-    /// The epsilon value used during normalization.
     epsilon: f32,
-    /// Per-hidden-element normalization weights.
     norm_weight: CudaStorage,
-    /// Per-element modulation scale.
     mod_scale: CudaStorage,
-    /// Per-element modulation shift.
     mod_shift: CudaStorage,
 }
 
 impl Map1 for FusedNormScaleShift {
-    fn f<T: DeviceRepr + WithDType>(
+    fn f<T: DeviceRepr + WithDType + ValidAsZeroBits>(
         &self,
         src: &CudaSlice<T>,
         dev: &CudaDevice,
         layout: &Layout,
-    ) -> crate::Result<CudaSlice<T>> {
-        let shape = layout.shape();
-        let dims = shape.dims();
+    ) -> Result<CudaSlice<T>> {
+        let dims = layout.shape().dims();
         if dims.len() != 2 {
-            crate::bail!("fused_norm_scale_shift expects a 2D layout, got {:?}", dims);
+            crate::bail!("fused_norm_scale_shift expects a 2D tensor, got {:?}", dims);
         }
-        let num_tokens = dims[0] as i32;
-        let hidden_size = dims[1] as i32;
-        let el = shape.elem_count();
+
+        let num_tokens = dims[0];
+        let hidden_size = dims[1];
+        let el = layout.shape().elem_count();
+
+        // Choose threads per block (capped at 256)
         let threads_per_block = if hidden_size < 256 { hidden_size as u32 } else { 256 };
         let cfg = LaunchConfig {
             grid_dim: (num_tokens as u32, 1, 1),
             block_dim: (threads_per_block, 1, 1),
             shared_mem_bytes: 0,
         };
-        // The kernel name will be constructed as "fused_norm_scale_shift_{dtype}"
-        let func = dev.get_or_load_func(&kernel_name::<T>("fused_norm_scale_shift"), kernels::FUSED_NORM_SCALE_SHIFT)?;
+
+        // Load the appropriate fused kernel
+        let func = dev.get_or_load_func(
+            &kernel_name::<T>("fused_norm_scale_shift"),
+            kernels::FUSED_NORM_SCALE_SHIFT,
+        )?;
+
+        // Prepare output storage
         let out = unsafe { dev.alloc::<T>(el) }?;
-        let norm = self.norm_weight.as_cuda_slice::<T>()?;
-        let scale = self.mod_scale.as_cuda_slice::<T>()?;
-        let shift = self.mod_shift.as_cuda_slice::<T>()?;
+
+        // Get the input and parameters slices
+        let src = &src.slice(layout.start_offset()..);
+        let norm_weight = match &self.norm_weight.slice {
+            CudaStorageSlice::F32(slice) => slice.device_ptr(),
+            // Add other type matches as needed
+            _ => crate::bail!("norm_weight must be f32, got {:?}", self.norm_weight.dtype()),
+        };
+
+        let mod_scale = match &self.mod_scale.slice {
+            CudaStorageSlice::F32(slice) => slice.device_ptr(),
+            _ => crate::bail!("mod_scale must be f32, got {:?}", self.mod_scale.dtype()),
+        };
+
+        let mod_shift = match &self.mod_shift.slice {
+            CudaStorageSlice::F32(slice) => slice.device_ptr(),
+            _ => crate::bail!("mod_shift must be f32, got {:?}", self.mod_shift.dtype()),
+        };
+
+        // Set up kernel parameters
         let params = (
-            out.as_device_ptr(),
-            src.as_device_ptr(),
-            norm.as_device_ptr(),
-            scale.as_device_ptr(),
-            shift.as_device_ptr(),
+            &out,
+            src,
+            norm_weight,
+            mod_scale,
+            mod_shift,
             self.epsilon,
-            num_tokens,
-            hidden_size,
+            num_tokens as i32,
+            hidden_size as i32
         );
+
+        // Launch the kernel
         unsafe { func.launch(cfg, params) }?;
+
         Ok(out)
     }
 }
@@ -1342,7 +1366,7 @@ impl BackendStorage for CudaStorage {
         .map(&self.slice, &device, layout)?;
         Ok(Self { slice, device })
     }
-    
+
     fn reduce_op(&self, op: ReduceOp, layout: &Layout, sum_dims: &[usize]) -> Result<Self> {
         let device = self.device().clone();
         let slice = FastReduce(sum_dims, op).map(&self.slice, &device, layout)?;
