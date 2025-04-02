@@ -26,25 +26,39 @@ pub fn fused_norm_scale_shift(
     mod_shift: &Tensor,
     epsilon: f32,
 ) -> Result<Tensor> {
-    // CPU implementation as fallback
     let dims = input.dims();
-    if dims.len() != 2 {
-        return Err(Error::Msg(format!("Expected tensor with 2 dimensions, got: {:?}", dims)));
+    if dims.len() < 2 {
+        return Err(Error::Msg(format!("Expected tensor with at least 2 dimensions, got: {:?}", dims)));
     }
 
-    // First normalize the input (as performed by layer_norm)
+    // For tensors with more than 2 dimensions, we treat them as 2D by flattening all but the last dimension
+    let original_shape = dims.to_vec();
     let hidden_dim = dims[dims.len() - 1];
-    let x = input.clone();
+    let flat_size: usize = dims.iter().take(dims.len() - 1).product();
 
-    // Computing variance (RMS-norm style)
+    // Reshape to [flat_size, hidden_dim] for processing
+    let x = if dims.len() > 2 {
+        input.reshape((flat_size, hidden_dim))?
+    } else {
+        input.clone()
+    };
+
+    // Compute normalization (RMS-norm style)
     let x2 = x.sqr()?;
-    let variance = x2.sum_keepdim(dims.len() - 1)? / hidden_dim as f64;
+    let variance = x2.sum_keepdim(1)? / hidden_dim as f64;
     let norm_factor = (variance? + epsilon as f64)?.sqrt()?.recip()?;
 
     // Apply normalization with the weight
     let normalized = x.broadcast_mul(&norm_factor)?.broadcast_mul(norm_weight)?;
 
-    // Then apply scale_shift operation exactly as in ModulationOut
+    // Apply scale_shift operation
     let scale_plus_one = (mod_scale + 1.0)?;
-    normalized.broadcast_mul(&scale_plus_one)?.broadcast_add(mod_shift)
+    let result = normalized.broadcast_mul(&scale_plus_one)?.broadcast_add(mod_shift)?;
+
+    // Reshape back to original dimensions if needed
+    if dims.len() > 2 {
+        result.reshape(original_shape)
+    } else {
+        Ok(result)
+    }
 }

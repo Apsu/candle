@@ -144,12 +144,13 @@ impl<'a> Map1 for FusedNormScaleShift<'a> {
         layout: &Layout,
     ) -> Result<CudaSlice<T>> {
         let dims = layout.shape().dims();
-        if dims.len() != 2 {
-            crate::bail!("fused_norm_scale_shift expects a 2D tensor, got {:?}", dims);
+        if dims.len() < 2 {
+            crate::bail!("fused_norm_scale_shift expects a tensor with at least 2 dimensions, got {:?}", dims);
         }
 
-        let num_tokens = dims[0];
-        let hidden_size = dims[1];
+        // For tensors with more than 2 dimensions, flatten all dimensions except the last one
+        let hidden_size = dims[dims.len() - 1];
+        let num_tokens: usize = dims.iter().take(dims.len() - 1).product();
         let el = layout.shape().elem_count();
 
         // Choose threads per block (capped at 256)
