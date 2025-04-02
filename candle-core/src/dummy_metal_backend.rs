@@ -194,6 +194,17 @@ impl crate::backend::BackendStorage for MetalStorage {
     fn upsample_nearest2d(&self, _: &Layout, _: usize, _: usize) -> Result<Self> {
         Err(Error::NotCompiledWithMetalSupport)
     }
+
+    fn fused_norm_scale_shift(
+        &self,
+        _layout: &Layout,
+        _norm_weight: &Self,
+        _mod_scale: &Self,
+        _mod_shift: &Self,
+        _epsilon: f32,
+    ) -> Result<Self> {
+        Err(Error::NotCompiledWithMetalSupport)
+    }
 }
 
 impl crate::backend::BackendDevice for MetalDevice {
