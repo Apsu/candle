@@ -2636,6 +2636,7 @@ impl Tensor {
     }
 }
 
+// Add this trait to tensor.rs
 pub trait FusedQkvAttentionExt {
     fn fused_qkv_attention(
         &self,
@@ -2668,54 +2669,46 @@ impl FusedQkvAttentionExt for Tensor {
 
         // Ensure all tensors are on the same device
         let device = self.device();
-        for tensor in [qkv_weights, query_norm, key_norm, proj_weights, pos_encoding].iter() {
-            if tensor.device() != device {
-                bail!("All tensors must be on the same device for fused_qkv_attention");
-            }
+
+        // Use device method that returns same type, not reference
+        let dev_eq = |t: &Tensor| t.device().same_device(device);
+
+        if !dev_eq(qkv_weights) || !dev_eq(query_norm) || !dev_eq(key_norm) ||
+           !dev_eq(proj_weights) || !dev_eq(pos_encoding) {
+            bail!("All tensors must be on the same device for fused_qkv_attention");
         }
 
         if let Some(bias) = qkv_bias {
-            if bias.device() != device {
+            if !dev_eq(bias) {
                 bail!("All tensors must be on the same device for fused_qkv_attention");
             }
         }
 
         if let Some(bias) = proj_bias {
-            if bias.device() != device {
+            if !dev_eq(bias) {
                 bail!("All tensors must be on the same device for fused_qkv_attention");
             }
         }
 
-        let storage = self.storage().fused_qkv_attention(
+        // Use storage_() to get the actual storage, not the guard
+        let storage = self.storage_().fused_qkv_attention(
             self.layout(),
-            &qkv_weights.storage(),
-            qkv_bias.map(|b| &b.storage()),
-            &query_norm.storage(),
-            &key_norm.storage(),
-            &proj_weights.storage(),
-            proj_bias.map(|b| &b.storage()),
-            &pos_encoding.storage(),
+            &qkv_weights.storage_(),
+            qkv_bias.map(|b| &*b.storage_()),
+            &query_norm.storage_(),
+            &key_norm.storage_(),
+            &proj_weights.storage_(),
+            proj_bias.map(|b| &*b.storage_()),
+            &pos_encoding.storage_(),
             num_heads,
         )?;
 
-        // Create a new tensor with the same shape
-        let op = BackpropOp::new1(self, |arg| Op::FusedQkvAttention {
-            arg,
-            qkv_weights: qkv_weights.clone(),
-            qkv_bias: qkv_bias.cloned(),
-            query_norm: query_norm.clone(),
-            key_norm: key_norm.clone(),
-            proj_weights: proj_weights.clone(),
-            proj_bias: proj_bias.cloned(),
-            pos_encoding: pos_encoding.clone(),
-            num_heads,
-        });
-
-        // Use the same dimensions as the input
-        Ok(from_storage(storage, self.shape(), op, false))
+        // Create tensor without backprop op for now
+        Ok(crate::tensor::from_storage(storage, self.shape().clone(), None))
     }
 }
 
+// Add this method to Device
 impl Device {
     pub fn same_device(&self, other: &Device) -> bool {
         match (self, other) {
